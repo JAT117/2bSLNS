@@ -19,6 +19,7 @@ struct KeepConfig {
 * @param fd file descriptor
 * @return 0 on success -1 on failure
 */
+
 int set_tcp_keepalive(int sockfd)
 {
     int optval = 1;
@@ -33,6 +34,7 @@ int set_tcp_keepalive(int sockfd)
 * @param fd file descriptor
 * @return 0 on success -1 on failure
 */
+
 int set_tcp_keepalive_cfg(int sockfd, const struct KeepConfig *cfg)
 {
     int rc;
@@ -61,7 +63,6 @@ int set_tcp_keepalive_cfg(int sockfd, const struct KeepConfig *cfg)
 
     return 0;
 }
-
 
 status = send( sock, buffer, buflen, MSG_DONTWAIT );
  
