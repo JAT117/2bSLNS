@@ -1,6 +1,5 @@
 /* SLNS server
  * Written by John Austin Todd 2018
- * Jorge Cardona helped too
  * Compilation: g++ -g -Wall -std=c++11 SLNS_server.cpp -o server
  * Run: ./SLNS
  * boots up on startup: rc.local ./home/pi/UNT-NASA/SLNS &
@@ -18,13 +17,13 @@
 #include <mutex> 		//for atomic locking
 #include <cstdio>
 #include <ctime>		//for timestamps
-#include <sys/time.h>	//timeval and timespec (tv_nsec) for nanoseconds
-#include <sys/types.h>	//setsockopt()
-#include <sys/socket.h>	//socket SOMAXCOMM
-#include <netinet/in.h>	//needed for domain addressses
+#include <sys/time.h>		//timeval and timespec (tv_nsec) for nanoseconds
+#include <sys/types.h>		//setsockopt()
+#include <sys/socket.h>		//socket SOMAXCOMM
+#include <netinet/in.h>		//needed for domain addressses
 #include <sys/select.h>
-#include <arpa/inet.h>	//inet_ntop for IP address resolution
-#include <stdlib.h>		//standard C library
+#include <arpa/inet.h>		//inet_ntop for IP address resolution
+#include <stdlib.h>		
 #include <unistd.h>
 #include <netdb.h>
 #include <errno.h>
@@ -42,7 +41,7 @@
 using namespace std;
 
 //Function Prototypes
-void parser(void);		     // processes GUI commands and is super amazing, like, totally bro
+void parser(void);	     // processes GUI commands and is super amazing, like, totally bro
 char *get_IP(int) ;          //returns new client IP address for storage
 string time_processed(void); //timestamping
 
@@ -77,7 +76,7 @@ int main()
 	cout<<"***********S****L*********N****N*N**********S*****\n";
 	cout<<"*****S*****S****L*********N*****NN****S*****S*****\n";
 	cout<<"******SSSSS*****LLLLLLLL**N******N*****SSSSS******\n";
-	cout<<"***********"<<time_processed() <<"***********\n";
+	cout<<"***********"<< time_processed() <<"***********\n";
 
 	if ((listener = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)) < 0) //TCP socket created, attach to port and address
 	{
