@@ -1,7 +1,7 @@
 /* Spacecraft Lighting Network System Client
- * Client code written by John Austin Todd 2018
- * OLA combatability written by Jorge Cardona 2018
- * Sensor Interrupt written by Taylor Shinn 2018
+ * Client code written by John Austin Todd 2018.
+ * OLA combatability written by Jorge Cardona 2018.
+ * Sensor Interrupt written by Taylor Shinn 2018.
  * Takes input from the SLNS server and commands OLA to change light values.
  * Sends sensor values back.
  * Dependencies: dmx512.cpp , dmx512.hpp for OLA 
