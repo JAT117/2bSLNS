@@ -81,11 +81,7 @@ if (status == -1)
 
 
 int sock, status;
- 
 sock = socket( AF_INET, SOCK_STREAM, 0 );
- 
-...
- 
 status = read( sock, buffer, buflen );
  
 if (status > 0) {
