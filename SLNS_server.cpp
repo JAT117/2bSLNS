@@ -59,6 +59,215 @@ map <string, int> IPmap; // map container for resolving IP addresses to client s
 map <string, int>::iterator fd;
 fd_set master, rset, wset; //create socket sets
 //char IPcount =0;
+
+char *get_IP(int fd) //returns IP address of fresh client
+{
+	struct sockaddr_in addr;
+	socklen_t addr_size = sizeof(struct sockaddr_in);
+	int res = getpeername(newfd, (struct sockaddr *)&addr, &addr_size);
+	res++; //only need this for the kernel to know who is coming a-knocking
+	char *client_ip = new char[15];
+	strcpy(client_ip, inet_ntoa(addr.sin_addr));
+	return client_ip;
+}
+
+string time_processed() //return time in format YYYY/MM/DD_HH:MM:SS:milliseconds
+{
+	char buf[40];
+	char time_buff[40];
+	struct timeval ts;
+	time_t curtime;
+	gettimeofday(&ts, NULL);
+	curtime=ts.tv_sec;
+	strftime(time_buff,40,"%Y/%m/%d_%T:",localtime(&curtime));
+	sprintf(buf,"[%s%ld]",time_buff, ts.tv_usec);
+	return buf;
+}
+
+
+void parser()
+{
+	sleep(3);
+	cout << "\nPARSER ACTIVE\n";
+	parselock.lock();
+	fstream wf, tf;
+	rset = master;
+	wset = master;
+	system("touch /home/pi/UNT-NASA/temp.txt");
+	time_t rawtime;
+	struct tm * ptm;
+	unsigned int loggedFlag = 0;
+	time(&rawtime);
+	ptm = gmtime(&rawtime);
+
+	wf.open(WFpath);
+	if(wf.is_open()) //if workfile exists and is open
+	{
+		string line;
+		while(getline(wf, line)) //while reading workfile and lines in
+		{
+			string setLINE, getLINE, flag, IP, CMD, data, set_RGB,sensor_data, time_issued;
+			stringstream stream, client_respond; // easy manipulation of each line
+			if(line[0] != 'S') //If the flag is not ment for the server, write processed command into temp and continue
+			{
+				cout << "Don't process:" + line << endl; //write the unprocessed line back into the file
+				tf.open(TFpath, ios::app);//create file and allow appending 
+				tf << line << endl;
+				tf.close();
+			}
+			else //if flag is "S" for the server
+			{
+				cout << "\nProcessing Line: " << line << endl;
+				stream.clear();
+				stream << line;
+				stream >> flag >> IP >> CMD >> data >> time_issued;  //parses the string
+				int currentFD = IPmap.find(IP)->second;
+				if((FD_ISSET(currentFD, &rset)) || (FD_ISSET(currentFD, &wset))) //check to make sure the connection socket exists in set
+				{
+					if(CMD == "SET")  //if command is SET either circadian or user defined RGB values
+					{
+						char response[buff];
+						cout << "Setting "+ data + " to " << IP << endl;
+						setLINE = CMD + " " + data;
+						status = send(currentFD,setLINE.c_str(),sizeof(setLINE), MSG_DONTWAIT|MSG_NOSIGNAL);
+						if(status <= 0 && errno == EPIPE)
+						{
+							IPmap.erase(IP);
+							tf.open(TFpath, ios::app);//create file and allow appending 
+							string rmv =  guiFlag + " " + IP + " RMV" + " 00000000 " + time_processed() + "\n";
+							tf << rmv;
+							tf.close();
+							break;
+						}
+						status = recv(currentFD,response,sizeof(response), MSG_DONTWAIT|MSG_NOSIGNAL);
+						if(status <= 0 && errno == EPIPE)
+						{
+							perror("Error: Did not Receive SET ack");
+							tf.open(TFpath, ios::app); 
+							tf << line << endl;
+							tf.close();
+							line.clear();
+						}
+						else // command has been executed on client and update the temp file
+						{
+							cout << "Response from SET command: " << response << endl;
+							string proc_str2 = processedFlag + " " + IP + " " + CMD + " " + response + " " + time_issued + " " + time_processed() + "\n";
+							cout << "Processed :" << proc_str2 << endl;
+							tf.open(TFpath, ios::app);//create file and allow appending 
+							tf << proc_str2;
+							tf.close();
+						}
+					}
+					else if(CMD == "GET")  //if command is GET sensor values
+					{
+						char sensor_data[buff];
+						cout << "Sending sensor request to Client " << IP << endl;
+						getLINE = CMD;
+						status = send(currentFD,getLINE.c_str(),sizeof(getLINE), MSG_DONTWAIT|MSG_NOSIGNAL);
+						if(status <= 0 && errno == EPIPE)
+						{
+							IPmap.erase(IP);
+							tf.open(TFpath, ios::app);//create file and allow appending 
+							string rmv =  guiFlag + " " + IP + " RMV" + " 00000000 " + time_processed() + "\n";
+							tf << rmv;
+							tf.close();
+							break;
+						}
+						status =recv(currentFD,sensor_data,sizeof(sensor_data), MSG_DONTWAIT|MSG_NOSIGNAL);
+						if(status <= 0 && errno == EPIPE)
+						{
+							perror("Error: Did not Receive GET set");
+							tf.open(TFpath, ios::app); 
+							tf << line;
+							tf.close();
+						}
+						else // command has been executed on client and update the temp file
+						{
+							cout << "Client Sensor Value: " << sensor_data << endl;
+							string proc_str3 = guiFlag+ " " + IP + " " + CMD + " " + sensor_data + " " + time_issued + " " + time_processed() + "\n";
+							cout << "Processed :" << proc_str3 << endl;
+							tf.open(TFpath, ios::app); 
+							tf << proc_str3;
+							tf.close();
+						}
+					}
+					else if(CMD == "SHD") //Shutdown client
+					{
+						status = send(currentFD, CMD.c_str(), sizeof(CMD), MSG_DONTWAIT|MSG_NOSIGNAL);
+						if(status <= 0 && errno == EPIPE)
+						{
+							IPmap.erase(IP);
+							//IPcount = IPmap.size();
+							tf.open(TFpath, ios::app);//create file and allow appending 
+							string rmv =  guiFlag + " " + IP + " SHD" + " 00000000 " + time_issued + " " + time_processed() + "\n";
+							tf << rmv;
+							tf.close();
+							close(sockfd);
+						}
+						else
+						{
+							IPmap.erase(IP);
+							string proc_str4 = processedFlag + " " + IP + " " + CMD + " " + "00000000" + " " + time_issued + " " + time_processed() + "\n";
+							cout << "Processed :" << proc_str4 << endl;
+							tf.open(TFpath, ios::app); 
+							tf << proc_str4;
+							tf.close();
+						}
+					}
+					else if(CMD == "SUS") //Suspend the Client
+					{
+						status = send(currentFD, CMD.c_str(), sizeof(CMD), MSG_DONTWAIT|MSG_NOSIGNAL);
+						if(status <= 0 && errno == EPIPE)
+						{
+							tf.open(TFpath, ios::app);//create file and allow appending
+							string rmv =  processedFlag + " " + IP + " SUS" + " 00000000 " + time_processed() + "\n";
+							tf << rmv;
+							tf.close();
+						}
+						else
+						{
+							string proc_str4 = guiFlag + " " + IP + " " + CMD + " " + "00000000" + " " + time_issued + " " + time_processed() + "\n";
+							cout << "Processed :" << proc_str4 << endl;
+							tf.open(TFpath, ios::app); 
+							tf << proc_str4;
+							tf.close();
+						}
+					}
+				}
+				else
+				{
+					perror("Client not found\n");
+					tf.open(TFpath, ios::app);//create file and allow appending
+					tf << line << endl;
+					tf.close();
+				}
+			}
+		}
+
+		if(loggedFlag == 0)
+		{
+			if(ptm->tm_hour == 0 && ptm->tm_min == 0 && ptm->tm_sec >= 0 && ptm->tm_sec <= 15) //this will allow a whole minute to grab it
+			{
+				system("cat /home/pi/UNT-NASA/temp.txt > cat /home/pi/UNT-NASA/logs/log.txt" );
+				loggedFlag = 1;
+			}
+			if(ptm->tm_sec >= 15)
+				loggedFlag = 0;
+		}
+		system("cat /home/pi/UNT-NASA/temp.txt > /home/pi/UNT-NASA/workfile.txt ; rm /home/pi/UNT-NASA/temp.txt"); //system call to overwrite workfile with temp file and then remove temp file
+		
+		wf.close();
+		parselock.unlock();
+	}
+	else //could not access temp file
+	{	
+		cout << "Workfile not open\n";
+	}
+	cout << "\nPARSER DEACTIVATED\n";
+}//end of parser
+
+
+
 int main()
 {
 	struct sockaddr_in sADDR;
@@ -258,207 +467,3 @@ int main()
 return 0; //end program
 }
 
-void parser()
-{
-	sleep(3);
-	cout << "\nPARSER ACTIVE\n";
-	parselock.lock();
-	fstream wf, tf;
-	rset = master;
-	wset = master;
-	system("touch /home/pi/UNT-NASA/temp.txt");
-	time_t rawtime;
-	struct tm * ptm;
-	unsigned int loggedFlag = 0;
-	time(&rawtime);
-	ptm = gmtime(&rawtime);
-
-	wf.open(WFpath);
-	if(wf.is_open()) //if workfile exists and is open
-	{
-		string line;
-		while(getline(wf, line)) //while reading workfile and lines in
-		{
-			string setLINE, getLINE, flag, IP, CMD, data, set_RGB,sensor_data, time_issued;
-			stringstream stream, client_respond; // easy manipulation of each line
-			if(line[0] != 'S') //If the flag is not ment for the server, write processed command into temp and continue
-			{
-				cout << "Don't process:" + line << endl; //write the unprocessed line back into the file
-				tf.open(TFpath, ios::app);//create file and allow appending 
-				tf << line << endl;
-				tf.close();
-			}
-			else //if flag is "S" for the server
-			{
-				cout << "\nProcessing Line: " << line << endl;
-				stream.clear();
-				stream << line;
-				stream >> flag >> IP >> CMD >> data >> time_issued;  //parses the string
-				int currentFD = IPmap.find(IP)->second;
-				if((FD_ISSET(currentFD, &rset)) || (FD_ISSET(currentFD, &wset))) //check to make sure the connection socket exists in set
-				{
-					if(CMD == "SET")  //if command is SET either circadian or user defined RGB values
-					{
-						char response[buff];
-						cout << "Setting "+ data + " to " << IP << endl;
-						setLINE = CMD + " " + data;
-						status = send(currentFD,setLINE.c_str(),sizeof(setLINE), MSG_DONTWAIT|MSG_NOSIGNAL);
-						if(status <= 0 && errno == EPIPE)
-						{
-							IPmap.erase(IP);
-							tf.open(TFpath, ios::app);//create file and allow appending 
-							string rmv =  guiFlag + " " + IP + " RMV" + " 00000000 " + time_processed() + "\n";
-							tf << rmv;
-							tf.close();
-							break;
-						}
-						status = recv(currentFD,response,sizeof(response), MSG_DONTWAIT|MSG_NOSIGNAL);
-						if(status <= 0 && errno == EPIPE)
-						{
-							perror("Error: Did not Receive SET ack");
-							tf.open(TFpath, ios::app); 
-							tf << line << endl;
-							tf.close();
-							line.clear();
-						}
-						else // command has been executed on client and update the temp file
-						{
-							cout << "Response from SET command: " << response << endl;
-							string proc_str2 = processedFlag + " " + IP + " " + CMD + " " + response + " " + time_issued + " " + time_processed() + "\n";
-							cout << "Processed :" << proc_str2 << endl;
-							tf.open(TFpath, ios::app);//create file and allow appending 
-							tf << proc_str2;
-							tf.close();
-						}
-					}
-					else if(CMD == "GET")  //if command is GET sensor values
-					{
-						char sensor_data[buff];
-						cout << "Sending sensor request to Client " << IP << endl;
-						getLINE = CMD;
-						status = send(currentFD,getLINE.c_str(),sizeof(getLINE), MSG_DONTWAIT|MSG_NOSIGNAL);
-						if(status <= 0 && errno == EPIPE)
-						{
-							IPmap.erase(IP);
-							tf.open(TFpath, ios::app);//create file and allow appending 
-							string rmv =  guiFlag + " " + IP + " RMV" + " 00000000 " + time_processed() + "\n";
-							tf << rmv;
-							tf.close();
-							break;
-						}
-						status =recv(currentFD,sensor_data,sizeof(sensor_data), MSG_DONTWAIT|MSG_NOSIGNAL);
-						if(status <= 0 && errno == EPIPE)
-						{
-							perror("Error: Did not Receive GET set");
-							tf.open(TFpath, ios::app); 
-							tf << line;
-							tf.close();
-						}
-						else // command has been executed on client and update the temp file
-						{
-							cout << "Client Sensor Value: " << sensor_data << endl;
-							string proc_str3 = guiFlag+ " " + IP + " " + CMD + " " + sensor_data + " " + time_issued + " " + time_processed() + "\n";
-							cout << "Processed :" << proc_str3 << endl;
-							tf.open(TFpath, ios::app); 
-							tf << proc_str3;
-							tf.close();
-						}
-					}
-					else if(CMD == "SHD") //Shutdown client
-					{
-						status = send(currentFD, CMD.c_str(), sizeof(CMD), MSG_DONTWAIT|MSG_NOSIGNAL);
-						if(status <= 0 && errno == EPIPE)
-						{
-							IPmap.erase(IP);
-							//IPcount = IPmap.size();
-							tf.open(TFpath, ios::app);//create file and allow appending 
-							string rmv =  guiFlag + " " + IP + " SHD" + " 00000000 " + time_issued + " " + time_processed() + "\n";
-							tf << rmv;
-							tf.close();
-							close(sockfd);
-						}
-						else
-						{
-							IPmap.erase(IP);
-							string proc_str4 = processedFlag + " " + IP + " " + CMD + " " + "00000000" + " " + time_issued + " " + time_processed() + "\n";
-							cout << "Processed :" << proc_str4 << endl;
-							tf.open(TFpath, ios::app); 
-							tf << proc_str4;
-							tf.close();
-						}
-					}
-					else if(CMD == "SUS") //Suspend the Client
-					{
-						status = send(currentFD, CMD.c_str(), sizeof(CMD), MSG_DONTWAIT|MSG_NOSIGNAL);
-						if(status <= 0 && errno == EPIPE)
-						{
-							tf.open(TFpath, ios::app);//create file and allow appending
-							string rmv =  processedFlag + " " + IP + " SUS" + " 00000000 " + time_processed() + "\n";
-							tf << rmv;
-							tf.close();
-						}
-						else
-						{
-							string proc_str4 = guiFlag + " " + IP + " " + CMD + " " + "00000000" + " " + time_issued + " " + time_processed() + "\n";
-							cout << "Processed :" << proc_str4 << endl;
-							tf.open(TFpath, ios::app); 
-							tf << proc_str4;
-							tf.close();
-						}
-					}
-				}
-				else
-				{
-					perror("Client not found\n");
-					tf.open(TFpath, ios::app);//create file and allow appending
-					tf << line << endl;
-					tf.close();
-				}
-			}
-		}
-
-		if(loggedFlag == 0)
-		{
-			if(ptm->tm_hour == 0 && ptm->tm_min == 0 && ptm->tm_sec >= 0 && ptm->tm_sec <= 15) //this will allow a whole minute to grab it
-			{
-				system("cat /home/pi/UNT-NASA/temp.txt > cat /home/pi/UNT-NASA/logs/log.txt" );
-				loggedFlag = 1;
-			}
-			if(ptm->tm_sec >= 15)
-				loggedFlag = 0;
-		}
-		system("cat /home/pi/UNT-NASA/temp.txt > /home/pi/UNT-NASA/workfile.txt ; rm /home/pi/UNT-NASA/temp.txt"); //system call to overwrite workfile with temp file and then remove temp file
-		
-		wf.close();
-		parselock.unlock();
-	}
-	else //could not access temp file
-	{	
-		cout << "Workfile not open\n";
-	}
-	cout << "\nPARSER DEACTIVATED\n";
-}//end of parser
-
-char *get_IP(int fd) //returns IP address of fresh client
-{
-	struct sockaddr_in addr;
-	socklen_t addr_size = sizeof(struct sockaddr_in);
-	int res = getpeername(newfd, (struct sockaddr *)&addr, &addr_size);
-	res++; //only need this for the kernel to know who is coming a-knocking
-	char *client_ip = new char[15];
-	strcpy(client_ip, inet_ntoa(addr.sin_addr));
-	return client_ip;
-}
-
-string time_processed() //return time in format YYYY/MM/DD_HH:MM:SS:milliseconds
-{
-	char buf[40];
-	char time_buff[40];
-	struct timeval ts;
-	time_t curtime;
-	gettimeofday(&ts, NULL);
-	curtime=ts.tv_sec;
-	strftime(time_buff,40,"%Y/%m/%d_%T:",localtime(&curtime));
-	sprintf(buf,"[%s%ld]",time_buff, ts.tv_usec);
-	return buf;
-}
