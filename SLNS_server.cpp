@@ -84,7 +84,6 @@ string time_processed() //return time in format YYYY/MM/DD_HH:MM:SS:milliseconds
 	return buf;
 }
 
-
 void parser()
 {
 	sleep(3);
@@ -265,7 +264,6 @@ void parser()
 	}
 	cout << "\nPARSER DEACTIVATED\n";
 }//end of parser
-
 
 
 int main()
@@ -463,7 +461,6 @@ int main()
 		}
 		
 		parser(); // call the parser to process and forward commands
-	}//end while loop
-return 0; //end program
+	}
+return 0; 
 }
-
