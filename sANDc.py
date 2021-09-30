@@ -1,7 +1,7 @@
 import sys
 import socket
 
-clientS = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+clientS = socket.socket(socket.AF_INET, socket.SOCK_DGRAM) #address formated socket
 dataSize = 2048
 
 HOST = '192.168.1.101'
@@ -27,8 +27,6 @@ def main():
         while (temp != 0):
             clientS.sendto("Hi Server: ".encode(), address)
             temp = temp -1
-
-
     else:
         print("Usage: sANDc.py  client|server")
         
